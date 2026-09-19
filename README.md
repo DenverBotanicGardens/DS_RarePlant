@@ -13,5 +13,8 @@ R code for Evaluating Distance Sampling as a Tool for Monitoring Populations of 
       (7) Individuals are independently observed      
 
 ## 2 | Addressing violations to (5) uniform density in relation to the transects     
-DensityGradient_Patchy : Estimating the bias caused by a density gradient and patchy distribution common to plant populations 
+<b> DensityGradient_Patchy </b> : Estimating the bias caused by a density gradient and patchy distribution common to plant populations    
+
+## 3 | Addressing violations to (1) perfect detection at distance zero, (5) patchy distribution of plants, and (7) independently observing individuals.    
+<b> MRDS_plants </b> : Tested a crossed design to allow for double observations. Plants are marked by mapping their location. 
   
