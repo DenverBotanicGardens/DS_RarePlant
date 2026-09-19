@@ -3,7 +3,7 @@ R code for Evaluating Distance Sampling as a Tool for Monitoring Populations of 
     
     
 ## 1 | Conventional Distance Sampling    
-<b> ConventionalDS </b> : Estimating the population size and effort (measured as spacing between transects) needed to maximize accuracy and precision assuming:        
+*ConventionalDS* : Estimating the population size and effort (measured as spacing between transects) needed to maximize accuracy and precision assuming:        
       (1) Detection declines with increasing distance from the observer and is perfect at distance zero    
       (2) The plant does not move    
       (3) The perpendicular distance is measured perfectly   
@@ -13,8 +13,8 @@ R code for Evaluating Distance Sampling as a Tool for Monitoring Populations of 
       (7) Individuals are independently observed      
 
 ## 2 | Addressing violations to (5) uniform density in relation to the transects     
-<b> DensityGradient_Patchy </b> : Estimating the bias caused by a density gradient and patchy distribution common to plant populations    
+*DensityGradient_Patchy* : Estimating the bias caused by a density gradient and patchy distribution common to plant populations    
 
 ## 3 | Addressing violations to (1) perfect detection at distance zero, (5) patchy distribution of plants, and (7) independently observing individuals.    
-<b> MRDS_plants </b> : Tested a crossed design to allow for double observations. Plants are marked by mapping their location. 
+*MRDS_plants* : Tested a crossed design to allow for double observations. Plants are marked by mapping their location. 
   
