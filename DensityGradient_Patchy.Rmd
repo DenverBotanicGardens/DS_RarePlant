@@ -1,0 +1,653 @@
+---
+title: "Test Design coverage of DS sim v2"
+author: "Michelle DePrenger-Levin"
+date: "2026-02-24"
+output: html_document
+---
+
+```{r}
+library(dssd)
+library(dsims)
+library(mgcv)
+
+```
+
+
+The shapefile is not included to protect the location of the recently delisted rare plant
+```{r}
+picnic.region <- make.region(region.name = "Picnic", shape = ".",
+                            units = "m")
+plot(picnic.region)
+
+coverP <- make.coverage(picnic.region, n.grid.points = 1000)
+```
+
+Make survey == one random realization of a design    
+covered area are the rectangles covered by the line transects (2* half-width or truncation)
+```{r}
+
+# density surface in relative terms. maintains relative density when given absolute values later 
+# Test how much bias will be introduced by non-uniform coverage
+# x and y's are removed to protect the location of the population
+pdens <- make.density(picnic.region, 
+                      x.space = 1, 
+                      constant = 1) # relative density
+
+pdens <- add.hotspot(object = pdens,
+                     centre = c(x1, y1),
+                     sigma = 60,
+                     amplitude = 4)
+
+pdens <- add.hotspot(object = pdens,
+                     centre = c(x2, y2),
+                     sigma = 10,
+                     amplitude = 2)
+
+pdens <- add.hotspot(object = pdens,
+                     centre = c(x3, y3),
+                     sigma = 10,
+                     amplitude = 2)
+
+pdens <- add.hotspot(object = pdens,
+                     centre = c(x4, y4),
+                     sigma = 30,
+                     amplitude = -1)
+
+
+plot(pdens)
+pdensity.data <- pdens@density.surface[[1]]
+
+## s() is a smooth term
+fit.pgam <- gam(density ~ s(x,y), data = pdensity.data, family = gaussian(link="log"))
+pgam.density <- make.density(region = picnic.region,
+                            x.space = 1,
+                            fitted.model = fit.pgam)
+
+plot(pgam.density)
+```
+
+```{r}
+## 1247 individuals at Picnic
+
+trnc <- 3
+scaleparam <- 1.16
+shapeparam <- 2.58 
+N <- trunc(1247) # listed as size of cluster but assume talks about size of population
+reps = 999
+# spacing <- 20# 25# 15# 20
+desnAn <- 55
+
+# covariates <- list(size = list(distribution = "ztruncpois", mean = 2)) ## Cactus can occur in groups but often as 1  
+# Define the population description
+pop.desc <- make.population.description(region = picnic.region,
+                                        density = pgam.density,
+                                        covariates = list(),
+                                        N = N,
+                                        fixed.N = TRUE)
+
+# Covariate parameters on the log scale
+detect <- make.detectability(key.function = "hr",
+                             scale.param = scaleparam,   # 1.16
+                             shape.param = shapeparam,   # 2.58
+                             # cov.param = cov.param,
+                             truncation = trnc)
+plot(detect, pop.desc)
+
+
+## hazard rate with no covariates, hazard rate with cluster size as a covariate
+# with default error variance estimator R2: random line placement, unequal line lengths
+#                                       R3: random, model-assisted estimator, true contagion process
+#                                       S2: systematic, variances weighted by line length
+analyses <- make.ds.analysis(dfmodel = list(~1), # list(~1, ~size),
+                             key = c("hr"), 
+                             truncation = trnc,
+                             er.var = "R2",  
+                             criteria = "AIC")
+###########################################################################################################
+```
+
+Coverage scores   
+```{r}
+
+
+for(linelength in c(30*5,30*7.5,30*10,30*12.5,30*15)){ 
+
+###########################################################################################################
+## Parallel to gradient
+picnic.design <- make.design(region = picnic.region,
+                             design = "systematic",
+                             line.length = linelength,  ## sets spacing to get close to the total length across samplers
+                             edge.protocol = "minus",      # don't go outside study area
+                             design.angle = desnAn,
+                             truncation = trnc,
+                             coverage.grid = coverP)
+
+
+## Generate one random set of transects
+transects <- generate.transects(picnic.design)
+
+## Assess coverage uniformity and design stats   
+# Want uniform coverage across the majority of the survey region
+design <- run.coverage(picnic.design, reps = 1000)
+
+#######################################################################################################################################
+##################################################
+# Perpendicular to gradient, parallel to gradient contours
+picnic.design.perp <- make.design(region = picnic.region,
+                             design = "systematic",
+                             line.length = linelength,  ## sets spacing to get close to the total length across samplers
+                             edge.protocol = "minus",      # don't go outside study area
+                             design.angle = desnAn+90,
+                             truncation = trnc,
+                             coverage.grid = coverP)
+
+
+## Generate one random set of transects
+transects.perp <- generate.transects(picnic.design.perp)
+
+## Assess coverage uniformity and design stats   
+# Want uniform coverage across the majority of the survey region
+design.perp <- run.coverage(picnic.design.perp, reps = 1000)
+
+##########################################################################
+## Segments
+## Parallel to gradient
+picnic.design.seg <- make.design(region = picnic.region,
+                             design = "segmentedgrid",
+                             line.length = linelength,  ## sets spacing to get close to the total length across samplers
+                             edge.protocol = "minus",      # don't go outside study area
+                             design.angle = desnAn,
+                             truncation = trnc,
+                             seg.length = 30,
+                             coverage.grid = coverP)
+
+
+## Generate one random set of transects
+transects.seg <- generate.transects(picnic.design.seg)
+
+design.seg <- run.coverage(picnic.design.seg, reps = 1000)
+
+####################################################
+# Perpendicular to gradient
+picnic.design.seg.perp <- make.design(region = picnic.region,
+                             design = "segmentedgrid",
+                             line.length = linelength,  ## sets spacing to get close to the total length across samplers
+                             edge.protocol = "minus",      # don't go outside study area
+                             design.angle = desnAn+90,
+                             truncation = trnc,
+                             spacing = spacing,
+                             seg.length = 30,
+                             coverage.grid = coverP)
+
+
+## Generate one random set of transects
+transects.seg.perp <- generate.transects(picnic.design.seg.perp)
+
+design.seg.perp <- run.coverage(picnic.design.seg.perp, reps = 1000)
+}
+
+
+
+```
+
+
+
+Simulation where the effort is kept constant  
+Run simulations for multiple population sizes    
+Effort as how many 30 meter segments are needed     
+```{r}
+
+summarySpacingOrintationType <- do.call(rbind,lapply(c(30*5,30*7.5,30*10,30*12.5,30*15), function(lineLength){ 
+  do.call(rbind, lapply(trunc(c(trunc(N/2),N, (N*2))), function(Nseq){
+    
+    ## 1247 individuals at Picnic
+
+trnc <- 3
+scaleparam <- 1.16
+shapeparam <- 2.58 
+reps = 1000
+desnAn <- 55
+
+# covariates <- list(size = list(distribution = "ztruncpois", mean = 2)) ## Cactus can occur in groups but often as 1  
+# Define the population description
+pop.desc <- make.population.description(region = picnic.region,
+                                        density = pgam.density,
+                                        covariates = list(),
+                                        N = Nseq,
+                                        fixed.N = TRUE)
+
+# Covariate parameters on the log scale - what does this refer to???
+# cov.param <- list(size = log(1.08))
+detect <- make.detectability(key.function = "hr",
+                             scale.param = scaleparam,   # 1.16
+                             shape.param = shapeparam,   # 2.58
+                             # cov.param = cov.param,
+                             truncation = trnc)
+
+## hazard rate with no covariates, hazard rate with cluster size as a covariate
+# with default error variance estimator R2: random line placement, unequal line lengths
+#                                       R3: random, model-assisted estimator, true contagion process
+#                                       S2: systematic, variances weighted by line length
+analyses <- make.ds.analysis(dfmodel = list(~1),# list(~1, ~size),
+                             key = c("hr"),  # ,"hr"),
+                             truncation = trnc,
+                             er.var = "R2",  # "S2": not supported, likely will be over-estimated, O2 also not supported
+                             criteria = "AIC")
+
+##############################################################################################################################
+## Parallel to gradient
+picnic.design <- make.design(region = picnic.region,
+                             design = "systematic",
+                             line.length = lineLength,  ## or spacing, line length sets spacing to get close to the total length of all samplers
+                             edge.protocol = "minus",      # don't go outside study area
+                             design.angle = desnAn,
+                             truncation = trnc,
+                             coverage.grid = coverP)
+
+
+## Generate one random set of transects
+transects <- generate.transects(picnic.design)
+
+sim.parallel <- make.simulation(reps = reps,
+                                design = picnic.design,
+                                population.description = pop.desc,
+                                detectability = detect,
+                                ds.analysis = analyses)
+
+sim.parallel <- run.simulation(sim.parallel, run.parallel = TRUE)
+summarySim <- summary(sim.parallel, use.max.reps = TRUE)
+est.df <- as.data.frame(do.call(rbind,lapply(1:dim(sim.parallel@results$individuals$N)[3],function(x){
+  out <- sim.parallel@results$individuals$N[,,x]
+  out
+  }))  )
+
+
+est.df <- est.df %>%
+  summarise(meanEst = mean(Estimate),
+         meanLCL = mean(lcl),
+         meanUCL = mean(ucl),
+         meanCV = mean(cv)) 
+
+parallel.df <- data.frame(parORseg = "systematic",              # systematic grid or segments  
+                     perpORparallel = "parallel",   # To the gradient
+                     # spacing = spacing,
+                     Effort = lineLength, 
+                     designAngle = desnAn,
+                     popsz = Nseq,
+                     numSamplers = transects@samp.count,
+                     coverageAvg = transects@cov.area/transects@strata.area,
+                     summarySim@individuals$summary,
+                     summarySim@individuals$N,
+                     summarySim@individuals$D,
+                     est.df)
+
+#######################################################################################################################################
+# Perpendicular to gradient, parallel to gradient contours
+picnic.design.perp <- make.design(region = picnic.region,
+                             design = "systematic",
+                             line.length = lineLength,  ## or spacing, line length sets spacing to get close to the total length of all samplers
+                             edge.protocol = "minus",      # don't go outside study area
+                             design.angle = desnAn+90,
+                             truncation = trnc,
+                             coverage.grid = coverP)
+
+
+## Generate one random set of transects
+transects.perp <- generate.transects(picnic.design.perp)
+
+sim.parallel.perp <- make.simulation(reps = reps,
+                                design = picnic.design.perp,
+                                population.description = pop.desc,
+                                detectability = detect,
+                                ds.analysis = analyses)
+eg.parallel.perp <- run.survey(sim.parallel.perp)
+
+sim.parallel.perp <- run.simulation(sim.parallel.perp, run.parallel = TRUE)
+summarySimPerp <- summary(sim.parallel.perp, use.max.reps = TRUE)
+estperp.df <- as.data.frame(do.call(rbind,lapply(1:dim(sim.parallel.perp@results$individuals$N)[3],function(x){
+  out <- sim.parallel.perp@results$individuals$N[,,x]
+  out
+}))  )
+
+estperp.df <- estperp.df %>%
+  summarise(meanEst = mean(Estimate),
+         meanLCL = mean(lcl),
+         meanUCL = mean(ucl),
+         meanCV = mean(cv)) 
+
+perp.df <- data.frame(parORseg = "systematic",              # parallel grid or segments  
+                     perpORparallel = "perpendicular",   # To the gradient
+                     Effort = lineLength, 
+                     designAngle = desnAn+90,
+                     popsz = Nseq,
+                     numSamplers = transects.perp@samp.count,
+                     coverageAvg = transects.perp@cov.area/transects.perp@strata.area,
+                     summarySimPerp@individuals$summary,
+                     summarySimPerp@individuals$N,
+                     summarySimPerp@individuals$D,
+                     estperp.df )
+
+##########################################################################
+## Segments
+## Parallel to gradient
+picnic.design.seg <- make.design(region = picnic.region,
+                             design = "segmentedgrid",
+                             edge.protocol = "minus",      # don't go outside study area
+                             design.angle = desnAn,
+                             truncation = trnc,
+                             line.length = lineLength, 
+                             seg.length = 30,
+                             coverage.grid = coverP)
+
+
+## Generate one random set of transects
+transects.seg <- generate.transects(picnic.design.seg)
+
+sim.parallel.seg <- make.simulation(reps = reps,
+                                design = picnic.design.seg,
+                                population.description = pop.desc,
+                                detectability = detect,
+                                ds.analysis = analyses)
+eg.parallel.seg <- run.survey(sim.parallel.seg)
+
+sim.parallel.seg <- run.simulation(sim.parallel.seg, run.parallel = TRUE)
+summarySeg <- summary(sim.parallel.seg, use.max.reps = TRUE)
+estseg.df <- as.data.frame(do.call(rbind,lapply(1:dim(sim.parallel.seg@results$individuals$N)[3],function(x){
+  out <- sim.parallel.seg@results$individuals$N[,,x]
+  out
+}))  )
+
+estseg.df <- estseg.df %>%
+  summarise(meanEst = mean(Estimate),
+         meanLCL = mean(lcl),
+         meanUCL = mean(ucl),
+         meanCV = mean(cv)) 
+
+seg.df <- data.frame(parORseg = "segments",              # parallel grid or segments  
+                     perpORparallel = "parallel",   # To the gradient
+                     Effort = lineLength, 
+                     designAngle = desnAn,
+                     popsz = Nseq,
+                     numSamplers = transects.seg@samp.count,
+                     coverageAvg = transects.seg@cov.area/transects.seg@strata.area,
+                     summarySeg@individuals$summary,
+                     summarySeg@individuals$N,
+                     summarySeg@individuals$D,
+                     estseg.df)
+
+
+####################################################
+# Perpendicular to gradient
+picnic.design.seg.perp <- make.design(region = picnic.region,
+                             design = "segmentedgrid",
+                             edge.protocol = "minus",      # don't go outside study area
+                             design.angle = desnAn+90,
+                             truncation = trnc,
+                             line.length = lineLength, 
+                             seg.length = 30,
+                             coverage.grid = coverP)
+
+
+## Generate one random set of transects
+transects.seg.perp <- generate.transects(picnic.design.seg.perp)
+
+sim.parallel.seg.perp <- make.simulation(reps = reps,
+                                design = picnic.design.seg.perp,
+                                population.description = pop.desc,
+                                detectability = detect,
+                                ds.analysis = analyses)
+eg.parallel.seg.perp <- run.survey(sim.parallel.seg.perp)
+
+sim.parallel.seg.perp <- run.simulation(sim.parallel.seg.perp, run.parallel = TRUE)
+summarySegPerp <- summary(sim.parallel.seg.perp, use.max.reps = TRUE)
+estsegperp.df <- as.data.frame(do.call(rbind,lapply(1:dim(sim.parallel.seg.perp@results$individuals$N)[3],function(x){
+  out <- sim.parallel.seg.perp@results$individuals$N[,,x]
+  out
+}))  )
+
+estsegperp.df <- estsegperp.df %>%
+  filter(!is.na(Estimate)) %>%
+  summarise(meanEst = mean(Estimate),
+         meanLCL = mean(lcl),
+         meanUCL = mean(ucl),
+         meanCV = mean(cv)) 
+
+segperp.df <- data.frame(parORseg = "segments",              # parallel grid or segments  
+                     perpORparallel = "perpendicular",   # To the gradient
+                     Effort = lineLength, 
+                     designAngle = desnAn+90,
+                     popsz = Nseq,
+                     numSamplers = transects.seg.perp@samp.count,
+                     coverageAvg = transects.seg.perp@cov.area/transects.seg.perp@strata.area,
+                     summarySegPerp@individuals$summary,
+                     summarySegPerp@individuals$N,
+                     summarySegPerp@individuals$D,
+                     estsegperp.df)
+
+dfout <-  parallel.df %>%
+  bind_rows(perp.df) %>%
+  bind_rows(seg.df) %>%
+  bind_rows(segperp.df)
+
+dfout
+
+
+}))
+  
+})) ## Systematic and specify the desired total sampler length instead of spacing between samplers
+
+```
+
+
+## Number of detections for each design   
+Simulation where the effort is kept constant  
+
+Run simulations for multiple population sizes    
+
+```{r}
+N <- 1247
+
+samplingBYdesign <- do.call(rbind,lapply(c(30*5,30*7.5,30*10,30*12.5,30*15), function(lineLength){ 
+  do.call(rbind, lapply(trunc(c(trunc(N/2),N, (N*2))), function(Nseq){
+    
+        ## 1247 individuals at Picnic
+    
+    trnc <- 3
+    scaleparam <- 1.16
+    shapeparam <- 2.58 
+    reps = 1000
+    desnAn <- 55
+    
+    # covariates <- list(size = list(distribution = "ztruncpois", mean = 2)) ## Cactus can occur in groups but often as 1  
+    # Define the population description
+    pop.desc <- make.population.description(region = picnic.region,
+                                            density = pgam.density,
+                                            covariates = list(),
+                                            N = Nseq,
+                                            fixed.N = TRUE)
+    
+    # Covariate parameters on the log scale - what does this refer to???
+    # cov.param <- list(size = log(1.08))
+    detect <- make.detectability(key.function = "hr",
+                                 scale.param = scaleparam,   # 1.16
+                                 shape.param = shapeparam,   # 2.58
+                                 # cov.param = cov.param,
+                                 truncation = trnc)
+    
+    ## hazard rate with no covariates, hazard rate with cluster size as a covariate
+    # with default error variance estimator R2: random line placement, unequal line lengths
+    #                                       R3: random, model-assisted estimator, true contagion process
+    #                                       S2: systematic, variances weighted by line length
+    analyses <- make.ds.analysis(dfmodel = list(~1),# list(~1, ~size),
+                                 key = c("hr"),  # ,"hr"),
+                                 truncation = trnc,
+                                 er.var = "R2",  # "S2": not supported, likely will be over-estimated, O2 also not supported
+                                 criteria = "AIC")
+    
+    ##############################################################################################################################
+    ## Parallel to gradient
+    picnic.design <- make.design(region = picnic.region,
+                                 design = "systematic",
+                                 line.length = lineLength,  ## or spacing, line length sets spacing to get close to the total length of all samplers
+                                 edge.protocol = "minus",      # don't go outside study area
+                                 design.angle = desnAn,
+                                 truncation = trnc,
+                                 coverage.grid = coverP)
+    
+    ### repeat 
+    systematic.parallel <- do.call(rbind, lapply(1:100, function(i) {
+      
+      ## Generate one random set of transects
+      transects <- generate.transects(picnic.design)
+      
+      sim.parallel <- make.simulation(reps = reps,
+                                      design = picnic.design,
+                                      population.description = pop.desc,
+                                      detectability = detect,
+                                      ds.analysis = analyses)
+      eg.parallel <- run.survey(sim.parallel)
+      
+      parallel.df <- data.frame(parORseg = "systematic",              # systematic grid or segments  
+                           perpORparallel = "parallel",   # To the gradient
+                           Effort = lineLength, 
+                           designAngle = desnAn,
+                           popsz = Nseq,
+                           numSamplers = transects@samp.count,
+                           LineLength = transects@line.length,
+                           Detections = length(eg.parallel@dists.in.covered),
+                           coverageAvg = transects@cov.area/transects@strata.area)
+      
+      parallel.df
+    
+    }))
+    
+    
+    #######################################################################################################################################
+    ##################################################
+    # Perpendicular to gradient, paralell to gradient contours
+    picnic.design.perp <- make.design(region = picnic.region,
+                                 design = "systematic",
+                                 line.length = lineLength,  ## or spacing, line length sets spacing to get close to the total length of all samplers
+                                 edge.protocol = "minus",      # don't go outside study area
+                                 design.angle = desnAn+90,
+                                 truncation = trnc,
+                                 coverage.grid = coverP)
+    
+    
+    ### repeat 
+    systematic.perp1 <- do.call(rbind, lapply(1:100, function(i) {
+      
+      ## Generate one random set of transects
+      transects <- generate.transects(picnic.design.perp)
+      
+      sim.parallel.perp1 <- make.simulation(reps = reps,
+                                      design = picnic.design.perp,
+                                      population.description = pop.desc,
+                                      detectability = detect,
+                                      ds.analysis = analyses)
+      eg.parallel.perp <- run.survey(sim.parallel.perp1)
+      
+      parallel.df <- data.frame(parORseg = "systematic",              # systematic grid or segments  
+                           perpORparallel = "perpendicular",   # To the gradient
+                           Effort = lineLength, 
+                           designAngle = desnAn+90,
+                           popsz = Nseq,
+                           numSamplers = transects@samp.count,
+                           LineLength = transects@line.length,
+                           Detections = length(eg.parallel.perp@dists.in.covered),
+                           coverageAvg = transects@cov.area/transects@strata.area)
+      
+      parallel.df
+    
+    }))
+    ##########################################################################
+    ## Segments
+    ## Parallel to gradient
+    picnic.design.seg <- make.design(region = picnic.region,
+                                 design = "segmentedgrid",
+                                 # line.length = ,  ## or spacing, line length sets spacing to get close to the total length of all samplers
+                                 edge.protocol = "minus",      # don't go outside study area
+                                 design.angle = desnAn,
+                                 truncation = trnc,
+                                 line.length = lineLength, 
+                                 seg.length = 30,
+                                 coverage.grid = coverP)
+    
+    
+    ### repeat 
+    segment <- do.call(rbind, lapply(1:100, function(i) {
+      
+      ## Generate one random set of transects
+      transects <- generate.transects(picnic.design.seg)
+      
+      sim.segment <- make.simulation(reps = reps,
+                                     design = picnic.design.seg,
+                                     population.description = pop.desc,
+                                     detectability = detect,
+                                     ds.analysis = analyses)
+      eg.segment <- run.survey(sim.segment)
+      
+      parallel.df <- data.frame(parORseg = "segments",              # systematic grid or segments  
+                           perpORparallel = "parallel",   # To the gradient
+                           Effort = lineLength, 
+                           designAngle = desnAn,
+                           popsz = Nseq,
+                           numSamplers = transects@samp.count,
+                           LineLength = transects@line.length,
+                           Detections = length(eg.segment@dists.in.covered),
+                           coverageAvg = transects@cov.area/transects@strata.area)
+      
+      parallel.df
+    
+    }))
+    
+    ####################################################
+    # Perpendicular to gradient
+    picnic.design.seg.perp <- make.design(region = picnic.region,
+                                 design = "segmentedgrid",
+                                 # line.length = ,  ## or spacing, line length sets spacing to get close to the total length of all samplers
+                                 edge.protocol = "minus",      # don't go outside study area
+                                 design.angle = desnAn+90,
+                                 truncation = trnc,
+                                 line.length = lineLength, 
+                                 seg.length = 30,
+                                 coverage.grid = coverP)
+    
+    
+    ### repeat 
+    segment.perp <- do.call(rbind, lapply(1:100, function(i) {
+      
+      ## Generate one random set of transects
+      transects <- generate.transects(picnic.design.seg.perp)
+      
+      sim.segment.perp <- make.simulation(reps = reps,
+                                          design = picnic.design.seg.perp,
+                                          population.description = pop.desc,
+                                          detectability = detect,
+                                          ds.analysis = analyses)
+      eg.segment <- run.survey(sim.segment.perp)
+      
+      parallel.df <- data.frame(parORseg = "segments",              # systematic grid or segments  
+                           perpORparallel = "perpendicular",   # To the gradient
+                           Effort = lineLength, 
+                           designAngle = desnAn+90,
+                           popsz = Nseq,
+                           numSamplers = transects@samp.count,
+                           LineLength = transects@line.length,
+                           Detections = length(eg.segment@dists.in.covered),
+                           coverageAvg = transects@cov.area/transects@strata.area)
+      
+      parallel.df
+    
+    }))
+
+  outdf <- do.call(rbind, list(systematic.parallel, systematic.perp1, segment,segment.perp))
+  outdf
+  }))
+})) ## Systematic and specify the desired line length instead of the spacing
+
+```
+
+
+
+
