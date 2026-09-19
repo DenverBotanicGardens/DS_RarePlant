@@ -12,5 +12,6 @@ ConventionalDS : Estimating the population size and effort (measured as spacing 
       (6) While some individuals are not observed, there is no double counting           
       (7) Individuals are independently observed      
 
-
+2 | Addressing violations to (5) uniform density in relation to the transects     
+DensityGradient_Patchy : Estimating the bias caused by a density gradient and patchy distribution common to plant populations 
   
