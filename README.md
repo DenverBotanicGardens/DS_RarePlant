@@ -10,7 +10,7 @@ ConventionalDS : Estimating the population size and effort (measured as spacing 
       (4) Sufficient individuals are observed to estimate the relationship between distance and density       
       (5) The population is uniform in density in relation to the transects        
       (6) While some individuals are not observed, there is no double counting           
-      (7) individuals are independently observed      
+      (7) Individuals are independently observed      
 
 
   
