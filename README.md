@@ -21,5 +21,5 @@ R code for Evaluating Distance Sampling as a Tool for Monitoring Populations of 
 
 
 ### Appendix B | Generalizing the impact of patchy distributions and a density gradient.    
-
+*Density_surfaces_square* : code to create 10 density surfaces each for gradients, patches, and both. 
   
