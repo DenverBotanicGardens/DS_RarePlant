@@ -16,5 +16,10 @@ R code for Evaluating Distance Sampling as a Tool for Monitoring Populations of 
 *DensityGradient_Patchy* : Estimating the bias caused by a density gradient and patchy distribution common to plant populations    
 
 ### 3 | Addressing violations to (1) perfect detection at distance zero, (5) patchy distribution of plants, and (7) independently observing individuals.    
-*MRDS_plants* : Tested a crossed design to allow for double observations. Plants are marked by mapping their location. 
+*MRDS_plants* : Tested a crossed design to allow for double observations. Plants are marked by mapping their location.     
+
+
+
+### Appendix B | Generalizing the impact of patchy distributions and a density gradient.    
+
   
