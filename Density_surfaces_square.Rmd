@@ -1,0 +1,266 @@
+---
+title: "Density gradients and patches"
+author: "Michelle DePrenger-Levin"
+date: "2026-09-30"
+output: html_document
+---
+
+Code for Appendix B   
+Evaluating Distance Sampling as a Tool for Monitoring Populations of Rare Plants (Cactaceae: Sclerocactus glaucus and Sclerocactus dawsoniae)    
+Michelle DePrenger-Levin, Mary Strecker, Jonathan Amegin      
+
+```{r}
+
+library(dssd)
+library(dsims)
+library(mgcv)
+library(sp)
+library(ggplot2)
+library(tidyverse)
+library(patchwork)
+```
+
+
+Generalize the impact of a density gradient and patchy distribution  
+Make a box the size of Picnic   
+```{r}
+
+# Target: 7806.717
+BoxM <- sqrt(7806.717)
+x_coords <- c(0,0,BoxM,BoxM,0)
+y_coords <- c(0,BoxM,BoxM,0,0)
+
+poly1 <- sp::Polygon(cbind(x_coords, y_coords))
+poly2 <- sp::Polygons(list(poly1), ID = "A")
+polySpatial <- sp::SpatialPolygons(list(poly2), proj4string = CRS("epsg:32630"))  
+
+shapefile(x = polySpatial, file = "Data/generic.region.shp")
+
+generic.region <- make.region(region.name = "box", shape = "Data/generic.region.shp")
+
+coverG <- make.coverage(generic.region, n.grid.points = 1000)
+```
+
+Make survey == one random realization of a design    
+covered area are the rectangles covered by the line transects (2* half-width or truncation)
+```{r}
+
+# density surface in relative terms. maintains relative density when given absolute values later 
+
+set.seed(1234)
+## Assumption that density is consistent
+# Density surface 1
+gdens <- make.density(generic.region, 
+                      x.space = 1, 
+                      constant = 1) 
+
+plot(gdens)
+###########################################################
+####  Gradients
+
+## 2: plants often do not occupy all suitable habitat
+gdens2 <- make.density(generic.region, 
+                      x.space = 1, 
+                      constant = 0.001) # relative density
+
+gdens2 <- add.hotspot(object = gdens2,
+                     centre = c(BoxM - BoxM/4, (BoxM*3)/4),
+                     sigma = BoxM/4,
+                     amplitude = 2)
+
+gdens2 <- add.hotspot(object = gdens2,
+                     centre = c(BoxM - BoxM/4, (BoxM*2)/4),
+                     sigma = BoxM/4,
+                     amplitude = 2)
+
+gdens2 <- add.hotspot(object = gdens2,
+                     centre = c(BoxM - BoxM/4, BoxM/4),
+                     sigma = BoxM/4,
+                     amplitude = 2)
+
+plot(gdens2) 
+
+##################################################################
+## 3: occupy more of the suitable habitat but lower density at habitat edges
+
+gdens3 <- make.density(generic.region, 
+                      x.space = 1, 
+                      constant = 0.001) # relative density
+
+gdens3 <- add.hotspot(object = gdens3,
+                     centre = c(BoxM - BoxM/5, (BoxM*4)/5),
+                     sigma = BoxM/2,
+                     amplitude = 2)
+
+gdens3 <- add.hotspot(object = gdens3,
+                     centre = c(BoxM - BoxM/5, (BoxM*2.5)/5),
+                     sigma = BoxM/5,
+                     amplitude = 2)
+
+gdens3 <- add.hotspot(object = gdens3,
+                     centre = c(BoxM - BoxM/5, BoxM/5),
+                     sigma = BoxM/2,
+                     amplitude = 2)
+
+plot(gdens3) 
+##################################################################
+## 4: random intensity of gradient
+set.seed(4)
+sigmaRan <- runif(9, BoxM/5,BoxM/2)
+set.seed(4)
+ampRan <- rpois(9,2)
+
+gdens4 <- make.density(generic.region, 
+                      x.space = 1, 
+                      constant = 0.001) # relative density
+
+gdens4 <- add.hotspot(object = gdens4,
+                     centre = c(BoxM - BoxM/5, (BoxM*4)/5),
+                     sigma = sigmaRan[1],
+                     amplitude = ampRan[1])
+
+gdens4 <- add.hotspot(object = gdens4,
+                     centre = c(BoxM - BoxM/5, (BoxM*2.5)/5),
+                     sigma = sigmaRan[2],
+                     amplitude = ampRan[2])
+
+gdens4 <- add.hotspot(object = gdens4,
+                     centre = c(BoxM - BoxM/5, BoxM/5),
+                     sigma = sigmaRan[3],
+                     amplitude = ampRan[3])
+
+plot(gdens4) 
+
+## 5
+gdens5 <- make.density(generic.region, 
+                      x.space = 1, 
+                      constant = 0.001) # relative density
+
+gdens5 <- add.hotspot(object = gdens5,
+                     centre = c(BoxM - BoxM/5, (BoxM*4)/5),
+                     sigma = sigmaRan[4],
+                     amplitude = ampRan[4])
+
+gdens5 <- add.hotspot(object = gdens5,
+                     centre = c(BoxM - BoxM/5, (BoxM*2.5)/5),
+                     sigma = sigmaRan[5],
+                     amplitude = ampRan[5])
+
+gdens5 <- add.hotspot(object = gdens5,
+                     centre = c(BoxM - BoxM/5, BoxM/5),
+                     sigma = sigmaRan[6],
+                     amplitude = ampRan[6])
+
+plot(gdens5)
+
+## 6
+gdens6 <- make.density(generic.region, 
+                      x.space = 1, 
+                      constant = 0.001) # relative density
+
+gdens6 <- add.hotspot(object = gdens6,
+                     centre = c(BoxM - BoxM/5, (BoxM*4)/5),
+                     sigma = sigmaRan[7],
+                     amplitude = ampRan[7])
+
+gdens6 <- add.hotspot(object = gdens6,
+                     centre = c(BoxM - BoxM/5, (BoxM*2.5)/5),
+                     sigma = sigmaRan[8],
+                     amplitude = ampRan[8])
+
+gdens6 <- add.hotspot(object = gdens6,
+                     centre = c(BoxM - BoxM/5, BoxM/5),
+                     sigma = sigmaRan[9],
+                     amplitude = ampRan[9])
+
+plot(gdens6)
+##################################################################
+## 7: consistent gradient of density across all suitable habitat
+
+# random slopes
+set.seed(5)
+slopes <- runif(5, 0.1, 6)
+
+gdens7 <- make.density(generic.region, 
+                       x.space = 1,
+                       y.space = 1,
+                       density.formula = paste("0.0001 +", slopes[2], "*x") )
+
+plot(gdens7)
+
+gdens8 <- make.density(generic.region, 
+                       x.space = 1,
+                       y.space = 1,
+                       density.formula = paste("0.0001 +", slopes[3], "*x") )
+
+plot(gdens8)
+
+gdens9 <- make.density(generic.region, 
+                       x.space = 1,
+                       y.space = 1,
+                       density.formula = paste("0.0001 +", slopes[4], "*x") )
+
+plot(gdens9)
+
+gdens10 <- make.density(generic.region, 
+                       x.space = 1,
+                       y.space = 1,
+                       density.formula = paste("0.0001 +", slopes[5], "*x") )
+
+plot(gdens10)
+
+gdens11 <- make.density(generic.region, 
+                       x.space = 1,
+                       y.space = 1,
+                       density.formula = paste("0.0001 +", slopes[1], "*x") )
+
+plot(gdens11)
+
+gdens1_11 <- list(gdens,gdens2,gdens3,gdens4,gdens5,gdens6,gdens7,gdens8,gdens9,gdens10,gdens11)
+
+##################################################################
+#### Patches (12-21)
+
+## 12-21: uneven suitability within a population and short dispersal distances cause patchy distribution. There are gradients at smaller scales but not consistent across the entire population
+
+gdens12 <- make.density(generic.region, 
+                      x.space = 1, 
+                      constant = 0.0001) 
+
+gdens12_21 <- lapply(1:10, function(i){
+  for(hots in 1:rpois(1,36)){
+    gdens12 <- add.hotspot(object = gdens12,
+                           centre = c(runif(1,0,BoxM),runif(1,0,BoxM)),
+                           sigma = rpois(1,5),
+                           amplitude = rpois(1,2))
+  }
+  gdens12
+  })
+
+
+plot(gdens12_21[[2]])
+
+#########################################################################
+## There can be a general density gradient and patches within
+
+## 22-31: start with density surface 2 and add random hotspots
+
+gdens22_31 <- lapply(1:10, function(i){
+  for(hots in 1:rpois(1,36)){
+    gdens2 <- add.hotspot(object = gdens2,
+                          centre = c(runif(1,0,BoxM),runif(1,0,BoxM)),
+                          sigma = rpois(1,5),
+                          amplitude = rpois(1,2))
+  }
+  gdens2
+  })
+
+
+plot(gdens22_31[[5]])
+
+densitySurfaces <- do.call(c, list(gdens1_11, gdens12_21, gdens22_31))
+
+save(densitySurfaces, file = "Data/densitySurfaces.rdata")
+
+```
+
