@@ -1,0 +1,392 @@
+---
+title: "2026_SCGL_work"
+author: "Jonathan Amegin"
+date: "2026-05-01"
+output: html_document
+---
+
+Updates by Michelle DePrenger-Levin 2026.06.02
+
+Finding duplicates function:
+
+~~- for each observation, create clones in the data frame that switch the
+"direction_from_transect" field for later duplicate analysis~~
+
+~~- Split the comparison of group sizes up between seedlings, vegetative, and
+reproductive~~
+
+~~-   Keep only the duplicates with the shortest distance between the compared observations
+    so that only 1 duplicate per global_id
+
+Not included:
+~~-   Develop probability scoring to show 'percent similarity' between observations based on
+    weighted scores of covariates
+
+~~- Idea is to use covariates to generate a probability score indicating likelihood of pairs of
+observations being duplicates.
+
+Covariates affecting probability:
+
+-   Number in groups, split between categories.
+
+-   Distance between observations
+
+-   Direction of transect
+
+-   within/out the crossed area
+
+```{r}
+load("Data/picnic_1.Rdata")
+```
+
+
+```{r}
+###Custom Function 1
+# Input plot data mapped to (X, Y) grid and plants added with the direction_to_group swapped - test uncertainty of direction
+dup.fun <- function(site, Tdistance = 1){ 
+  
+  site <- site %>%
+    mutate_at(c("object_id"), ~as.numeric(as.character(.)))
+  
+  #making new column with new UUID for each observation due to cloned entries
+  site$new_id = UUIDgenerate(use.time = FALSE, n = nrow(site), output = "string")
+  
+  #Creating list of all combinations of global_id's to reference, order doesn't matter, start with only original
+  list <- utils::combn(site$new_id[site$swapped_dir == 0], m = 2, simplify = FALSE)
+
+  # (1) first go through and keep or discard a swapped plant placement,
+  #Appending calculated variables to the list  
+  list <- lapply(list, function(list.1){
+
+    #indexing data with the paired global_ids
+    a <- site[site$new_id == list.1[1],]
+    b <- site[site$new_id == list.1[2],]
+
+    # Check the swapped 
+    a1 <- site[site$object_id == a$object_id & site$swapped_dir == 1,]
+    b1 <- site[site$object_id == b$object_id & site$swapped_dir == 1,]
+
+    #Calculate distance, if the swapped is closer, then always use the swapped, only if on different transects
+    # do both for all, then only keep the original or swapped if_any are marked that the swapped is closer
+    #  They could be a duplicate if (1) they are from different transect orientations
+    #                               (2) the pair (or any combination of swapped directions) are closer than the threshold distance 
+    ### In this case "a" and "b" represent the original mapped position, "a1" and "b1" are the swapped direction
+      Original <- dist(rbind(c(a$x,a$y), c(b$x,b$y)), method = "euclidean")
+      SwappedA <- dist(rbind(c(a1$x,a$y), c(b$x,b$y)), method = "euclidean")
+      SwappedB <- dist(rbind(c(a$x,a$y), c(b1$x,b$y)), method = "euclidean")
+      SwappedAB <- dist(rbind(c(a1$x,a$y), c(b1$x,b$y)), method = "euclidean")
+      
+      if(any(c(Original,SwappedA,SwappedB,SwappedAB) < Tdistance)){
+        ## Which should be swapped
+        SwapMe <- c("a_b","a1_b","a_b1","a1_b1")[which.min(c(Original,SwappedA,SwappedB,SwappedAB))]
+        list.1[3] <- min(Original, SwappedA, SwappedB, SwappedAB)
+      } else {
+        list.1[3] <- dist(rbind(c(a$x,a$y), c(b$x,b$y)), method = "euclidean")
+        SwapMe <- "a_b"
+      }
+      
+    #determining if they are on the same transect
+    ## same == 1, different == 0
+    list.1[4] <- case_when(a$transect_orientation == b$transect_orientation ~ 1,
+                           a$transect_orientation != b$transect_orientation ~ 0)
+
+    
+    #Comparing if the 'direction_from_transect' variable was swapped earlier
+    list.1[5] <- case_when(any(sapply(SwapMe, str_detect, "a1")) ~ a1$new_id,
+                           TRUE ~ a$new_id) ## id_1 updated
+    list.1[6] <- case_when(any(sapply(SwapMe, str_detect, "b1")) ~ b1$new_id,
+                           TRUE ~ b$new_id) ## id_2 updated
+    #The orientation of id_1; id_2
+    list.1[7] <- a$transect_orientation
+    list.1[8] <- b$transect_orientation
+    
+    # First or second swapped? 
+    list.1[9] <- case_when(any(sapply(SwapMe, str_detect, "a1")) ~ 1,
+                           TRUE ~ 0)
+    list.1[10] <- case_when(any(sapply(SwapMe, str_detect, "b1")) ~ 1,
+                           TRUE ~ 0) ## id_1_updated
+    
+    list.1[11] <- a$object_id
+    list.1[12] <- b$object_id
+    
+     return(list.1)
+  })
+  
+
+    df <- data.frame(do.call(rbind,list))
+    names(df) <- c("V1_id", "V2_id",
+                      "distanceBetween",
+                      "same_diff",  ## if on same or different transect 1 = same, 0 = different
+                      "V1_updatedid",  # after checking if need to be swapped
+                      "V2_updatedid",  # after checking if need to be swapped
+                      "V1_orientation",
+                      "V2_orientation",
+                      "V1_swapped",
+                      "V2_swapped",
+                      "V1_objectID",
+                      "V2_objectID")
+
+ df$dupID <- UUIDgenerate(use.time = FALSE, n = nrow(df), output = "string") 
+
+
+ ## df wide to long splitting transect orientation and id; keep only the swapped or original. 
+ df_long <- df %>%
+   filter(same_diff == 0) %>%
+   filter(distanceBetween < Tdistance) %>%
+   pivot_longer(cols = starts_with("V"), names_to = c("ID", ".value"),
+                names_sep = "_") %>%
+   mutate_at(c("objectID","distanceBetween","same_diff"), ~as.numeric(as.character(.))) %>%
+   group_by(objectID) %>%
+   filter(distanceBetween == min(distanceBetween)) %>%
+   arrange(desc(swapped)) %>%
+   filter(row_number() == 1) %>%
+   ungroup() %>%
+   dplyr::select(!c(ID, same_diff)) 
+
+ # The updated ID is the swapped or original (if swapped is < Tdistance) 
+ # the dupID should be applied to the updatedid when < Tdistance
+ siteout <- site %>%
+   left_join(df_long, by = c("new_id" = "updatedid")) %>%
+   mutate(dupID = case_when(is.na(dupID) ~ new_id,
+                            TRUE ~ dupID)) %>%
+   mutate(objectID = case_when(is.na(objectID) ~ object_id,
+                               TRUE ~ objectID)) %>%
+   group_by(object_id) %>%
+   ## need to keep only swapped_dir == 0 unless swapped was true (1)
+   filter(case_when(swapped == 1 ~ swapped_dir == 1,
+                    TRUE ~ swapped_dir == 0)) %>%
+   ungroup() %>%
+   as.data.frame()
+   
+ return(siteout)
+}
+
+```
+
+
+```{r}
+
+# only zoned, still some repeated object_ids
+pic1Dups <- dup.fun(picnic_1[picnic_1$zoned == 1,], Tdistance = 1)
+
+#Graphing the site with duplicated observations marked in blue
+pic_lines <- tibble( x = c(-20, -30, -40, -20, -10, -10, 0), 
+                     y = c(20, 10, 0, 20, 30, 40, 50), 
+                     xend = c(-20, -30, -40, -90, -70, -70, -50),
+                     yend = c(60, 76, 50, 20, 30, 40, 50),
+                     label = c("1NS", "2NS", "3NS", "1EW", "2EW", "3EW", "4EW"))
+
+duplicates <- pic1Dups %>%
+  group_by(dupID) %>%
+  filter(n() > 1)
+
+# Select only the swapped when that location was closer
+pic_plot <- pic1Dups %>% 
+  filter(!(object_id %in% c(31,110,193,109, 115, 200) & is.na(swapped))) %>%
+  # filter(zoned ==1 & swapped_dir == 0) %>% 
+  ggplot( mapping = aes(x, y)) +
+    geom_point(data = filter(picnic_1, swapped_dir == 0), aes(x,y), shape = 16, size = 1) +
+    geom_point(aes(color = transect_orientation), shape = 1) +
+    geom_point(data = duplicates, color = "white", size = 0.8) +
+    scale_colour_manual("Orientation", values = c("#1E88E5","#D81B60"))  +
+    geom_segment(data = pic_lines, aes(x = x, y = y, xend = xend, yend = yend)) +
+    theme(
+        axis.line=element_blank(),axis.text.x=element_blank(),
+            axis.text.y=element_blank(),axis.ticks=element_blank(),
+            axis.title.x=element_blank(),
+            axis.title.y=element_blank(),  #legend.position="none",
+        panel.background = element_rect(fill='transparent'), #transparent panel bg
+        plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+        panel.grid.major = element_blank(), #remove major gridlines
+        panel.grid.minor = element_blank(), #remove minor gridlines
+        legend.background = element_rect(fill='transparent'), #transparent legend bg
+        legend.box.background = element_rect(fill='transparent') #transparent legend panel
+      ) + 
+    coord_fixed()
+```
+
+
+ids are duplicated in picnic_1 for the original and the swapped  
+group_by plant Id and only keep the one with the closer distance (if within the threshold) or only keep original. 
+
+Mark-Recapture   
+fixedDistDupID
+```{r}
+library(RMark)
+
+## 91 records
+picnic_1 %>%
+  filter(zoned == 1 & swapped_dir == 0)
+
+pic1Dups %>%
+  group_by(object_id) %>%
+  summarise(n = n()) 
+
+pic1Dups %>%
+  filter(object_id %in% c(31, 109, 110, 115, 193, 200)) %>%
+  arrange(object_id)
+
+x <- pic1Dups %>%
+  mutate(dh = 1) %>%
+  complete(transect_orientation, dupID, 
+           fill = list(dh=0)) %>%
+  pivot_wider(id_cols = dupID, values_from = dh, names_from = transect_orientation) %>%  
+  unite(ch, EW:NS, sep="") 
+
+x %>%
+  filter(ch == "11")  ## 13 observed by both
+x %>%
+  filter(ch != "11")  ## 71 by only one
+
+x %>%
+  mutate(ch = paste0(ch,";")) %>%
+  write.table(file = "Data/Closed.inp",
+              sep = " ", col.names = FALSE, row.names = FALSE)
+
+scglClosed.inp <- convert.inp("Data/Closed.inp",
+                              covariates = NULL,
+                              use.comments = FALSE)
+
+M <- nrow(x) ## (81) now 84 unique observations
+clusterSize <- 1.58
+
+## EW then NS
+Cproc <- process.data(x, model = "Closed")
+Cddl <- make.design.data(Cproc)
+
+# constant p and c
+closed <- mark(data = Cproc, Cddl, model.parameters = list(p = list(formula = ~1),
+                                                           c = list(formula = ~1)))
+
+closedshared <- mark(data = Cproc, Cddl, model.parameters = 
+                       list(p = list(formula=~1,share=TRUE)))
+
+get.real(closed, "p", se = TRUE) ## 0.83 (0.71-0.91)
+get.real(closed, "f0", se = TRUE)
+get.real(closedshared, "p", se = TRUE)  ## 0.27 (0.17 - 0.40)
+get.real(closedshared, "f0", se = TRUE) ## 93.72 (45-193)
+out <- get.real(closedshared, "f0", se = TRUE)
+out$estimate
+
+## old: 121.98 (56.5 - 263.3) as the 95% CI of individuals never seen
+(out$estimate+M)*clusterSize
+(out$lcl + M)*clusterSize
+(out$ucl + M)*clusterSize
+
+```
+
+
+## MRDS  
+```{r}
+
+library(mrds)
+
+picnic.data1 <- pic1Dups %>%
+  filter(!(object_id %in% c(31,110,193,109, 115, 200) & is.na(swapped))) %>%
+  ## rename distance_to_group to distance
+  rename(distance = distance_to_group) %>%
+  mutate(distance = abs(distance)) %>%
+  mutate(detected = 1) %>%
+  rename("object" = dupID) %>%
+  rename("observer" = transect_orientation) %>%
+  rowwise() %>%
+  mutate(size = sum(c(number_seedlings_in_group, 
+                      number_vegetative_in_group, 
+                      number_reproductive_in_group), na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(object) %>%
+  mutate(size = max(size, na.rm = TRUE)) %>%
+  ungroup() %>%
+  complete(nesting(object,size),observer, fill = list(detected = 0)) %>% ## Keep only size and plant ID that are in the data
+  dplyr::select(object,observer, size, detected, distance, transect_meter_mark) %>%
+  arrange(object, observer) %>%
+  mutate(observer = as.factor(as.numeric(as.factor(observer)))) %>%
+  relocate(size, .after = distance) %>%
+  mutate(object = as.integer(as.factor(object))) %>%
+  ## When grouped, one might be missed, that's the row where distance missing
+  group_by(object) %>%
+  ## each set of two observations
+  ## need to update the group size as well. 
+  mutate(distance2 = case_when(
+    detected == 0 & max(abs(transect_meter_mark), na.rm = TRUE) < 15 ~ abs(10-max(abs(transect_meter_mark), na.rm = TRUE)),
+    detected == 0  & max(abs(transect_meter_mark), na.rm = TRUE) > 15 & max(abs(transect_meter_mark), na.rm = TRUE) < 25 ~ 
+                                                                             abs(20-max(abs(transect_meter_mark), na.rm = TRUE)),
+    detected == 0  & max(abs(transect_meter_mark), na.rm = TRUE) > 25 & max(abs(transect_meter_mark), na.rm = TRUE) < 35 ~ 
+                                                                             abs(30-max(abs(transect_meter_mark), na.rm = TRUE)),
+    detected == 0  & max(abs(transect_meter_mark), na.rm = TRUE) > 35 & max(abs(transect_meter_mark), na.rm = TRUE) < 45 ~ 
+                                                                             abs(40-max(abs(transect_meter_mark), na.rm = TRUE)),
+    detected == 0  & max(abs(transect_meter_mark), na.rm = TRUE) > 45 & max(abs(transect_meter_mark), na.rm = TRUE) < 55 ~ 
+                                                                             abs(50-max(abs(transect_meter_mark), na.rm = TRUE)),
+    detected == 0  & max(abs(transect_meter_mark), na.rm = TRUE) > 55 & max(abs(transect_meter_mark), na.rm = TRUE) < 65 ~ 
+                                                                             abs(60-max(abs(transect_meter_mark), na.rm = TRUE)),
+      TRUE ~ max(distance, na.rm = TRUE)
+                              )) %>%
+  ungroup() %>%
+  dplyr::select(object:detected,size,distance2) %>%
+  rename("distance" = "distance2") %>%
+  group_by(object,observer) %>%
+  ## Where the size differs, only keep larger estimate of size; won't see more than are there, might miss some
+  filter(size == max(size, na.rm = TRUE)) %>%
+  ungroup() %>%
+  distinct()
+  
+picnic.data1 %>%
+  group_by(observer, detected) %>%
+  summarise(n = n())
+
+picnic.data1 %>%
+  group_by(object) %>%
+  filter(detected == 1) %>%
+  summarise(n = n()) %>%
+  filter(n > 1)
+
+sizeVariation <- table(picnic.data1$object) ## A few have duplicate observations! so four instead of 2. Fixed by selecting larger
+picnic.data1 %>%
+  filter(object %in% c(sizeVariation != 2))
+
+## Fully independent   
+# MR only, no distance data
+fi.mr.dist <- ddf(method = "trial.fi", 
+                  mrmodel = ~ glm(link = 'logit', formula = ~ size), #  distance),
+                  data = picnic.data1,
+                  meta.data = list(width = 3))
+
+
+detection.tables <- det.tables(fi.mr.dist)
+# Print these detection tables
+print(detection.tables)
+plot(fi.mr.dist)
+
+picnic.data1 %>%
+  ggplot(  aes(distance, fill = observer)) +
+    geom_histogram()
+
+
+fi.mr.dist.io <- ddf(method = "io.fi", 
+                  mrmodel = ~ glm(link = 'logit', formula = ~ size), #  distance),
+                  data = picnic.data1,
+                  meta.data = list(width = 3))
+
+
+detection.tables.io <- det.tables(fi.mr.dist.io)
+# Print these detection tables
+print(detection.tables.io)
+plot(fi.mr.dist.io)
+
+############ Swap observer 1 and 2
+picnic.data1.swapObs <- picnic.data1 %>%
+  mutate(observer = case_when(observer == 1 ~ 2,
+                              observer == 2 ~ 1))
+
+fi.mr.dist.swap <- ddf(method = "trial.fi", 
+                  mrmodel = ~ glm(link = 'logit', formula = ~ size), #  distance),
+                  data = picnic.data1.swapObs,
+                  meta.data = list(width = 3))
+
+
+detection.tables.swap <- det.tables(fi.mr.dist.swap)
+# Print these detection tables
+print(detection.tables.swap)
+plot(fi.mr.dist.swap)
+
+```
